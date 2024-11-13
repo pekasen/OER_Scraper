@@ -6,6 +6,7 @@ tagesschau:
       query: "ard"
   sortBy: "timestamp"
   sortOrder: "desc"
+  min_duration: 300
   future: false
   offset: 0
   size: 8000
@@ -17,6 +18,7 @@ tagesthemen:
       query: "ard"
   sortBy: "timestamp"
   sortOrder: "desc"
+  min_duration: 300
   future: false
   offset: 0
   size: 8000
@@ -28,6 +30,7 @@ zdf_heute:
       query: "zdf"
   sortBy: "timestamp"
   sortOrder: "desc"
+  min_duration: 300
   future: false
   offset: 0
   size: 8000
@@ -39,6 +42,7 @@ heute_journal:
       query: "zdf"
   sortBy: "timestamp"
   sortOrder: "desc"
+  min_duration: 300
   future: false
   offset: 0
   size: 8000
@@ -50,6 +54,7 @@ hart_aber_fair:
       query: "ard"
   sortBy: "timestamp"
   sortOrder: "desc"
+  min_duration: 300
   future: false
   offset: 0
   size: 8000
@@ -61,6 +66,7 @@ anne_will:
       query: "ard"
   sortBy: "timestamp"
   sortOrder: "desc"
+  min_duration: 300
   future: false
   offset: 0
   size: 8000
@@ -72,6 +78,7 @@ caren_miosga:
       query: "ard"
   sortBy: "timestamp"
   sortOrder: "desc"
+  min_duration: 300
   future: false
   offset: 0
   size: 8000
@@ -83,6 +90,7 @@ maischberger:
       query: "ard"
   sortBy: "timestamp"
   sortOrder: "desc"
+  min_duration: 300
   future: false
   offset: 0
   size: 8000
@@ -94,6 +102,7 @@ maybrit_illner:
       query: "zdf"
   sortBy: "timestamp"
   sortOrder: "desc"
+  min_duration: 300
   future: false
   offset: 0
   size: 8000
@@ -105,6 +114,7 @@ markus_lanz:
       query: "zdf"
   sortBy: "timestamp"
   sortOrder: "desc"
+  min_duration: 300
   future: false
   offset: 0
   size: 8000

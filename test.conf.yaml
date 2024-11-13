@@ -1,0 +1,12 @@
+tagesschau:
+  queries:
+    - fields: ["title", "topic"]
+      query: "tagesschau"
+    - fields: ["channel"]
+      query: "ard"
+  sortBy: "timestamp"
+  sortOrder: "desc"
+  min_duration: 300
+  future: false
+  offset: 0
+  size: 25

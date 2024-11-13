@@ -1,6 +1,7 @@
 import re
 import os
 import shutil
+import typing
 import zipfile
 import argparse
 import requests
@@ -9,11 +10,9 @@ from glob import glob
 from tqdm import tqdm
 from datetime import datetime
 import xml.etree.ElementTree as ET
+from loguru import logger
 
-from oer_scraper.cli import BASE_PATH
-
-DATE = datetime.today().strftime("%d%m%Y")
-nachrichtensendungen = ["markus_lanz", "maybrit_illner", "maischberger", "hart_aber_fair","tagesschau","tagesthemen", "zdf_heute", "heute_journal", "anne_will", "caren_miosga"]
+API_URL = 'https://mediathekviewweb.de/api/query'
 
 def create_base_folder():
     """
@@ -30,209 +29,86 @@ def create_base_folder():
     if not os.path.exists(base_folder_path):
         os.makedirs(base_folder_path)
 
-def get_sendung(sendung:str):
+def _call_mv_api_(api_url: str, query: typing.Dict):
+    """
+    Calls the MediathekView API with a given query.
+
+    Args:
+        api_url (str): The API endpoint URL.
+        query (str): The query string to send to the API.
+
+    Returns:
+        dict: The JSON response from the API, or None if the call fails.
+    """
+    headers = {
+        'User-Agent': 'ax mvclient 0.1.1',
+        'Content-Type': 'text/plain'
+    }
+    response = requests.post(api_url, json=query, headers=headers)
+    logger.debug(f"API call to {api_url} with query {query} returned status code {response.status_code}")
+    if response.status_code != 200:
+        return
+    # Parse JSON content
+    response = response.json()
+    logger.debug(f"API call returned {len(response)} results")
+    return response
+
+
+def get_program(program: str, program_query: typing.Dict) -> typing.Optional[pd.DataFrame]:
     """
     Fetches metadata for a specified TV show from the MediathekView API.
 
     Args:
-        sendung (str): The name of the TV show to retrieve data for.
+        program (str): The name of the TV show to retrieve data for.
+        program_query (str): The query string to send to the API.
 
     Returns:
         DataFrame: A DataFrame containing metadata about the TV show's episodes.
-    """
-    def call_mv_api(api_url, query):
-        """
-        Calls the MediathekView API with a given query.
+    """    
 
-        Args:
-            api_url (str): The API endpoint URL.
-            query (str): The query string to send to the API.
+    logger.debug(f"Fetching data for {program} with query: {program_query}")    
 
-        Returns:
-            dict: The JSON response from the API, or None if the call fails.
-        """
-        headers = {
-            'User-Agent': 'ax mvclient 0.1.1',
-            'Content-Type': 'text/plain'
-        }
-        response = requests.post(api_url, data=query, headers=headers)
-        return response.json() if response.status_code == 200 else None
+    results = _call_mv_api_(API_URL, program_query)
+    if not results:
+        logger.warning(f"No data return for {program}.")
+        return
     
-    def conditions(entry, sendung):
-        """
-        Checks if an entry matches the conditions for the specified TV show.
+    results = (
+        pd.DataFrame(
+            (
+                res_obj
+                for res_obj in results.get("result", {"results": []}).get("results", [])
+            )
+        )
+        .drop_duplicates("url_subtitle").reset_index(drop=True)
+        .assign(permanent_id=lambda x: x.timestamp.map(lambda y: f"{program}_{y}"))
+        .query("url_subtitle.notna()")
+    )
 
-        Args:
-            entry (dict): The entry to check.
-            sendung (str): The name of the TV show.
+    # results["PERMANENT_ID"] = df.index
+    # if sendung == "zdf_heute":
+    #     return df.iloc[:366,:]
+    # elif sendung in ["anne_will", "caren_miosga"]:
+    #     df.dropna(subset="url_subtitle", inplace=True)
+    #     df = df[df["url_subtitle"] != ""].reset_index(drop=True)
+    #     df["PERMANENT_ID"] = df.index
+    #     return df
+    # else:
+    return results
 
-        Returns:
-            dict or None: The entry if it matches the conditions, otherwise None.
-        """
-        if sendung == "heute_journal":
-            if "heute journal" in entry['topic'].lower() and entry['url_subtitle'] != "":
-                return entry
-            else:
-                return None
-        elif sendung == "zdf_heute":
-            if entry['url_subtitle'] != "" and entry["duration"] > 500:
-                return entry
-            else:
-                return None
-        elif sendung == "tagesschau":
-            if "tagesschau 20:00 Uhr" in entry['title'] and entry['url_subtitle'] != "":
-                return entry
-            else:
-                return None
-        elif sendung == "tagesthemen":
-            pattern = r"tagesthemen \d{2}:\d{2} Uhr, \d{2}\.\d{2}\.\d{4}"
-            if "tagesthemen" in entry["topic"].lower() and entry['url_subtitle'] != "" and re.match(pattern, entry['title']) is not None:
-                return entry
-            else:
-                return None
-        elif sendung == "anne_will":
-            if 'Anne Will' in entry["topic"]:
-                return entry
-            else:
-                return None
-        elif sendung == "caren_miosga":
-            if 'Caren Miosga' in entry["topic"]:
-                return entry
-            else:
-                return None
-        elif sendung == "hart_aber_fair":
-            if 'Hart aber fair' in entry["topic"]:
-                return entry
-            else:
-                return None
-        elif sendung == "maischberger":
-            if 'maischberger' in entry["topic"] and "maischberger am" in entry["title"]:
-                return entry
-            else:
-                return None
-        elif sendung == "markus_lanz":
-            if 'Markus Lanz' in entry["topic"]:
-                return entry
-            else:
-                return None
-        elif sendung == "maybrit_illner":
-            if 'maybrit illner' in entry["topic"]:
-                return entry
-            else:
-                return None
-        else:
-            raise KeyError(f"{sendung} does not exist!")
-        
-    api_url = 'https://mediathekviewweb.de/api/query'
-    sendungs_dict = {
-        "tagesschau": '{"queries":[{"fields":["title","topic"],"query":"tagesschau"},' \
-            '{"fields":["channel"],"query":"ard"}],"sortBy":"timestamp","sortOrder":"desc",' \
-            '"future":"false","offset":"0","size":"8000"}',
-        "tagesthemen": '{"queries":[{"fields":["title","topic"],"query":"tagesthemen"},' \
-            '{"fields":["channel"],"query":"ard"}],"sortBy":"timestamp","sortOrder":"desc",' \
-            '"future":"false","offset":"0","size":"8000"}',
-        "zdf_heute": '{"queries":[{"fields":["title","topic"],"query":"heute 19:00 uhr"},' \
-            '{"fields":["channel"],"query":"zdf"}],"sortBy":"timestamp","sortOrder":"desc",' \
-            '"future":"false","offset":"0","size":"8000"}',
-        "heute_journal":'{"queries":[{"fields":["title","topic"],"query":"heute journal"},' \
-            '{"fields":["channel"],"query":"zdf"}],"sortBy":"timestamp","sortOrder":"desc",' \
-            '"future":"false","offset":"0","size":"8000"}',
-        "hart_aber_fair":'{"queries":[{"fields":["title","topic"],"query":"hart aber fair"},' \
-            '{"fields":["channel"],"query":"ard"}],"sortBy":"timestamp","sortOrder":"desc",' \
-            '"future":"false","offset":"0","size":"8000"}',
-        "anne_will":'{"queries":[{"fields":["title","topic"],"query":"anne will"},' \
-            '{"fields":["channel"],"query":"ard"}],"sortBy":"timestamp","sortOrder":"desc",' \
-            '"future":"false","offset":"0","size":"8000"}',
-        "caren_miosga":'{"queries":[{"fields":["title","topic"],"query":"caren miosga"},' \
-            '{"fields":["channel"],"query":"ard"}],"sortBy":"timestamp","sortOrder":"desc",' \
-            '"future":"false","offset":"0","size":"8000"}',
-        "maischberger":'{"queries":[{"fields":["title","topic"],"query":"maischberger"},' \
-            '{"fields":["channel"],"query":"ard"}],"sortBy":"timestamp","sortOrder":"desc",' \
-            '"future":"false","offset":"0","size":"8000"}',
-        "maybrit_illner":'{"queries":[{"fields":["title","topic"],"query":"maybrit illner"},' \
-            '{"fields":["channel"],"query":"zdf"}],"sortBy":"timestamp","sortOrder":"desc",' \
-            '"future":"false","offset":"0","size":"8000"}',
-        "markus_lanz":'{"queries":[{"fields":["title","topic"],"query":"Markus Lanz"},' \
-            '{"fields":["channel"],"query":"zdf"}],"sortBy":"timestamp","sortOrder":"desc",' \
-            '"future":"false","offset":"0","size":"8000"}',
-        }
-    
-    dct_list = list()
-    result = call_mv_api(api_url, sendungs_dict[sendung])
-    if result:
-        for idx, entry in enumerate(result['result']['results']):
-            if conditions(entry, sendung) is not None:
-                dct_list.append(entry)
-            else:
-                continue
-    else:
-        print("Failed to retrieve data from the API.")
-    df = pd.DataFrame(dct_list).drop_duplicates("url_subtitle").reset_index(drop=True)
-    df["PERMANENT_ID"] = df.index
-    if sendung == "zdf_heute":
-        return df.iloc[:366,:]
-    elif sendung in ["anne_will", "caren_miosga"]:
-        df.dropna(subset="url_subtitle", inplace=True)
-        df = df[df["url_subtitle"] != ""].reset_index(drop=True)
-        df["PERMANENT_ID"] = df.index
-        return df
-    else:
-        return df
-    
-def get_path(sendung, date):
-    """
-    Constructs the file path for storing data for the specified TV show and date.
 
-    Args:
-        sendung (str): The name of the TV show.
-        date (str): The date string to include in the path.
-
-    Returns:
-        str: The constructed file path.
-    """
-    if not os.path.exists(BASE_PATH):
-        os.makedirs(BASE_PATH)
-    if sendung == "tagesschau":
-        path = os.path.join(BASE_PATH, "ARD_Tagesschau/")
-    elif sendung == "tagesthemen":
-        path = os.path.join(BASE_PATH, "ARD_Tagesthemen/")
-    elif sendung == "zdf_heute":
-        path = os.path.join(BASE_PATH, "ZDF_Heute/")
-    elif sendung == "heute_journal":
-        path = os.path.join(BASE_PATH, "ZDF_Heute_Journal/")
-    elif sendung == "anne_will":
-        path = os.path.join(BASE_PATH, "Anne_Will/")
-    elif sendung == "caren_miosga":
-        path = os.path.join(BASE_PATH, "Caren_Miosga/")
-    elif sendung == "hart_aber_fair":
-        path = os.path.join(BASE_PATH, "Hart_aber_Fair/")
-    elif sendung == "maischberger":
-        path = os.path.join(BASE_PATH, "Maischberger/")
-    elif sendung == "maybrit_illner":
-        path = os.path.join(BASE_PATH, "Maybrit_Illner/")
-    elif sendung == "markus_lanz":
-        path = os.path.join(BASE_PATH, "Markus_Lanz/")
-    else:
-        raise KeyError(f"{sendung} does not exist!")
-    if not os.path.exists(path):
-        os.makedirs(path)
-    path += f"{date}/"
-    return path
-
-def save_metadata(sendung, date, df):
+def save_metadata(program, date, data, path):
     """
     Saves metadata for the specified TV show to a CSV file.
 
     Args:
-        sendung (str): The name of the TV show.
+        program (str): The name of the TV show.
         date (str): The date string to include in the file path.
         df (DataFrame): The DataFrame containing metadata to save.
+        path (Path): The path to save the metadata file to.
     """
-    path = get_path(sendung, date)
-    if not os.path.exists(path):
-        os.makedirs(path)
-    path += "metadata.csv"
-    df.to_csv(path, index=False)
+    data.to_csv(path / f"{program}_{date}.csv", index=False)
+
     
 def zip_folder(folder_path, zip_path):
     """
@@ -247,7 +123,7 @@ def zip_folder(folder_path, zip_path):
             for file in files:
                 zipf.write(os.path.join(root, file), os.path.relpath(os.path.join(root, file), folder_path))
     
-def save_subtitles(df, sendung, date):
+def save_subtitles(df, program, date):
     """
     Saves subtitles for each episode of the specified TV show.
 
@@ -270,14 +146,14 @@ def save_subtitles(df, sendung, date):
             xml_data = response.content
             with open(f"{path}{id}.xml", "wb") as f:
                 f.write(xml_data)
-    path = get_path(sendung, date)
-    path += "XML_Subtitles/"
-    if not os.path.exists(path):
-        os.makedirs(path)
-    for idx, row in tqdm(df.iterrows(), total = len(df), leave = False):
-        if isinstance(row["url_subtitle"], str):
-            if row["url_subtitle"].startswith("https://"):
-                get_subtitles(row["url_subtitle"], row["PERMANENT_ID"], path)
+        path = get_path(program, date, path)
+        path += "XML_Subtitles/"
+        if not os.path.exists(path):
+            os.makedirs(path)
+        for idx, row in tqdm(df.iterrows(), total = len(df), leave = False):
+            if isinstance(row["url_subtitle"], str):
+                if row["url_subtitle"].startswith("https://"):
+                    get_subtitles(row["url_subtitle"], row["PERMANENT_ID"], path)
                 
 def download_video(file_name, url):
     """
@@ -301,7 +177,7 @@ def download_video(file_name, url):
     else:
         return False
     
-def download_videos_as_zip(sendung, date, df):
+def download_videos_as_zip(sendung, date, df, path):
     """
     Downloads videos for the specified TV show, zips them, and removes the original files.
 
@@ -310,7 +186,7 @@ def download_videos_as_zip(sendung, date, df):
         date (str): The date string to include in the file path.
         df (DataFrame): The DataFrame containing video URLs to download.
     """
-    base_path = get_path(sendung, date)
+    base_path = get_path(sendung, date, path)
     path = base_path + "Videos"
     if not os.path.exists(path):
         os.makedirs(path)
@@ -406,15 +282,16 @@ def parse_xml_df(xml_df):
     parsed_df["text"] = parsed_df["text"].apply(lambda x: x.replace("  ", " "))
     return parsed_df
 
-def parse_and_save_xml(sendung, date):
+def parse_and_save_xml(sendung, date, path):
     """
     Parses XML subtitle files and saves them as CSV files.
 
     Args:
         sendung (str): The name of the TV show.
         date (str): The date string to include in the file path.
+
     """
-    path = get_path(sendung, date)
+    path = get_path(sendung, date,  path)
     xml_folder = path + "XML_Subtitles/"
     parsed_xml_folder = path + "Subtitles/"
     if not os.path.exists(parsed_xml_folder):
@@ -437,7 +314,7 @@ def main(subtitles:bool=True, parsed:bool=True, videos:bool=True):
     """
     create_base_folder()
     for sendung in tqdm(nachrichtensendungen, desc="Scrape News", total = len(nachrichtensendungen)):
-        df = get_sendung(sendung)
+        df = get_program(sendung)
         save_metadata(sendung, DATE, df)
         if subtitles:
             save_subtitles(df, sendung, DATE)

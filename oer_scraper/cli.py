@@ -3,11 +3,13 @@ import pathlib
 import yaml
 import typing
 
+from loguru import logger
 from pydantic.dataclasses import dataclass
+from dataclasses import asdict
 from datetime import datetime
 from tqdm import tqdm
 
-from .scraper import get_program, save_metadata, save_subtitles, download_videos_as_zip, nachrichtensendungen, parse_and_save_xml
+from .scraper import get_program, save_metadata, save_subtitles, download_videos_as_zip, parse_and_save_xml
 
 
 @dataclass
@@ -24,6 +26,7 @@ class ProgramQuery:
     future: int
     offset: int
     size: int
+    min_duration: int
 
 
 @dataclass
@@ -31,9 +34,9 @@ class Configuration:
     subtitles: bool
     parse: bool
     download: bool
-    start_time: datetime
-    end_time: datetime
-    interval: int
+    start_time: typing.Optional[datetime]
+    end_time: typing.Optional[datetime]
+    interval: typing.Optional[int]
     output_folder: pathlib.Path
     programs: typing.Dict[str, ProgramQuery]
 
@@ -68,19 +71,23 @@ def cli(subtitles, parse, download, start_time, end_time, interval, config, outp
         "output_folder": output_folder
     }
     # Step 1: read configuration and iterate the list of configured programs:
-    configuration["queries"] = yaml.safe_load(config)
+    configuration["programs"] = yaml.safe_load(config)
     # Step 1: validate inputs
     configuration = Configuration(**configuration)
     main(configuration, working_dir, DATE)
 
+@logger.catch
 def main(configuration: Configuration, working_dir, DATE):
-    for program, program_query in tqdm( configuration.programs.items(), desc="Scrape News", total = len(nachrichtensendungen)):
-        data = get_program(program, program_query)  # Get current listing for the specified program.
+    for program, program_query in tqdm( configuration.programs.items(), desc="Scraping…"):
+        data = get_program(program, asdict(program_query))  # Get current listing for the specified program.
         # Dump this into the SQLite database, deduplicate the data and decide from that whether to download additional data.
-        save_metadata(program, DATE, data)
+        if data is None or data.empty:
+            continue
+        save_metadata(program, DATE, data, configuration.output_folder)
         if configuration.subtitles:
-            save_subtitles(df, program, DATE)
+            save_subtitles(data, program, DATE)
         if configuration.parse:
             parse_and_save_xml(program, DATE)
         if configuration.download:
             download_videos_as_zip(working_dir, start_time, end_time)
+        return 0

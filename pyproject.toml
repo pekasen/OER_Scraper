@@ -12,8 +12,9 @@ requests = "*"
 pandas = "*"
 click = "*"
 tqdm = "*"
-pyyaml = "^6.0.2"
-pydantic = "^2.9.2"
+pyyaml = "*"
+pydantic = "*"
+loguru = "*"
 
 [tool.poetry.scripts]
 "oerscraper" = "oer_scraper.cli:cli"
