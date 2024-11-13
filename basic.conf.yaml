@@ -1,0 +1,110 @@
+tagesschau:
+  queries:
+    - fields: ["title", "topic"]
+      query: "tagesschau"
+    - fields: ["channel"]
+      query: "ard"
+  sortBy: "timestamp"
+  sortOrder: "desc"
+  future: false
+  offset: 0
+  size: 8000
+tagesthemen:
+  queries:
+    - fields: ["title", "topic"]
+      query: "tagesthemen"
+    - fields: ["channel"]
+      query: "ard"
+  sortBy: "timestamp"
+  sortOrder: "desc"
+  future: false
+  offset: 0
+  size: 8000
+zdf_heute:
+  queries:
+    - fields: ["title", "topic"]
+      query: "heute 19:00 uhr"
+    - fields: ["channel"]
+      query: "zdf"
+  sortBy: "timestamp"
+  sortOrder: "desc"
+  future: false
+  offset: 0
+  size: 8000
+heute_journal:
+  queries:
+    - fields: ["title", "topic"]
+      query: "heute journal"
+    - fields: ["channel"]
+      query: "zdf"
+  sortBy: "timestamp"
+  sortOrder: "desc"
+  future: false
+  offset: 0
+  size: 8000
+hart_aber_fair:
+  queries:
+    - fields: ["title", "topic"]
+      query: "hart aber fair"
+    - fields: ["channel"]
+      query: "ard"
+  sortBy: "timestamp"
+  sortOrder: "desc"
+  future: false
+  offset: 0
+  size: 8000
+anne_will:
+  queries:
+    - fields: ["title", "topic"]
+      query: "anne will"
+    - fields: ["channel"]
+      query: "ard"
+  sortBy: "timestamp"
+  sortOrder: "desc"
+  future: false
+  offset: 0
+  size: 8000
+caren_miosga:
+  queries:
+    - fields: ["title", "topic"]
+      query: "caren miosga"
+    - fields: ["channel"]
+      query: "ard"
+  sortBy: "timestamp"
+  sortOrder: "desc"
+  future: false
+  offset: 0
+  size: 8000
+maischberger:
+  queries:
+    - fields: ["title", "topic"]
+      query: "maischberger"
+    - fields: ["channel"]
+      query: "ard"
+  sortBy: "timestamp"
+  sortOrder: "desc"
+  future: false
+  offset: 0
+  size: 8000
+maybrit_illner:
+  queries:
+    - fields: ["title", "topic"]
+      query: "maybrit illner"
+    - fields: ["channel"]
+      query: "zdf"
+  sortBy: "timestamp"
+  sortOrder: "desc"
+  future: false
+  offset: 0
+  size: 8000
+markus_lanz:
+  queries:
+    - fields: ["title", "topic"]
+      query: "Markus Lanz"
+    - fields: ["channel"]
+      query: "zdf"
+  sortBy: "timestamp"
+  sortOrder: "desc"
+  future: false
+  offset: 0
+  size: 8000
