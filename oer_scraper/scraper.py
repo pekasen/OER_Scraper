@@ -10,8 +10,10 @@ from tqdm import tqdm
 from datetime import datetime
 import xml.etree.ElementTree as ET
 
-BASE_PATH = "./Broadcast_Subtitles/"
+from oer_scraper.cli import BASE_PATH
+
 DATE = datetime.today().strftime("%d%m%Y")
+nachrichtensendungen = ["markus_lanz", "maybrit_illner", "maischberger", "hart_aber_fair","tagesschau","tagesthemen", "zdf_heute", "heute_journal", "anne_will", "caren_miosga"]
 
 def create_base_folder():
     """
@@ -434,7 +436,6 @@ def main(subtitles:bool=True, parsed:bool=True, videos:bool=True):
         videos (bool): If True, download videos.
     """
     create_base_folder()
-    nachrichtensendungen = ["markus_lanz", "maybrit_illner", "maischberger", "hart_aber_fair","tagesschau","tagesthemen", "zdf_heute", "heute_journal", "anne_will", "caren_miosga"]
     for sendung in tqdm(nachrichtensendungen, desc="Scrape News", total = len(nachrichtensendungen)):
         df = get_sendung(sendung)
         save_metadata(sendung, DATE, df)
