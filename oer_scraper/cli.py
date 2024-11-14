@@ -130,6 +130,7 @@ def main(configuration: Configuration, today):
         # Dump this into the SQLite database, deduplicate the data and decide
         # from that whether to download additional data.
         if data is None or data.empty:
+            logger.warning(f"Quering for '{program}' has returned no data.")
             continue
 
         # print(data.loc[:, ["timestamp", "title", "url_subtitle"]])
@@ -155,4 +156,4 @@ def main(configuration: Configuration, today):
             download_videos_as_zip(program, today, data, configuration.output_folder)
         save_metadata(program, today, data, configuration.output_folder)
 
-        return 0
+    return 0
