@@ -343,14 +343,15 @@ def parse_and_save_xml(program, date, path, data):
         date (str): The date string to include in the file path.
 
     """
+    _data_ = data.query("xml_path.notna()").copy()
     program_path = get_path(program, date, path)
     xml_folder = program_path / XML_FOLDER
     parsed_xml_folder = program_path / SUBTITLES_FOLDER
     if not parsed_xml_folder.exists():
         parsed_xml_folder.mkdir(parents=True)
 
-    input_path_list = data.xml_path.map(lambda x: xml_folder / x).tolist()
-    output_path_list = data.permanent_id.map(
+    input_path_list = _data_.xml_path.map(lambda x: xml_folder / x).tolist()
+    output_path_list = _data_.permanent_id.map(
         lambda x: parsed_xml_folder / f"{x}.csv"
     ).tolist()
 
