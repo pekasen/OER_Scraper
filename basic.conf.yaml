@@ -1,51 +1,3 @@
-tagesschau:
-  queries:
-    - fields: ["title", "topic"]
-      query: "tagesschau"
-    - fields: ["channel"]
-      query: "ard"
-  sortBy: "timestamp"
-  sortOrder: "desc"
-  min_duration: 300
-  future: false
-  offset: 0
-  size: 8000
-tagesthemen:
-  queries:
-    - fields: ["title", "topic"]
-      query: "tagesthemen"
-    - fields: ["channel"]
-      query: "ard"
-  sortBy: "timestamp"
-  sortOrder: "desc"
-  min_duration: 300
-  future: false
-  offset: 0
-  size: 8000
-zdf_heute:
-  queries:
-    - fields: ["title", "topic"]
-      query: "heute 19:00 uhr"
-    - fields: ["channel"]
-      query: "zdf"
-  sortBy: "timestamp"
-  sortOrder: "desc"
-  min_duration: 300
-  future: false
-  offset: 0
-  size: 8000
-heute_journal:
-  queries:
-    - fields: ["title", "topic"]
-      query: "heute journal"
-    - fields: ["channel"]
-      query: "zdf"
-  sortBy: "timestamp"
-  sortOrder: "desc"
-  min_duration: 300
-  future: false
-  offset: 0
-  size: 8000
 hart_aber_fair:
   queries:
     - fields: ["title", "topic"]
@@ -57,7 +9,7 @@ hart_aber_fair:
   min_duration: 300
   future: false
   offset: 0
-  size: 8000
+  size: 100
 anne_will:
   queries:
     - fields: ["title", "topic"]
@@ -69,7 +21,7 @@ anne_will:
   min_duration: 300
   future: false
   offset: 0
-  size: 8000
+  size: 100
 caren_miosga:
   queries:
     - fields: ["title", "topic"]
@@ -81,7 +33,7 @@ caren_miosga:
   min_duration: 300
   future: false
   offset: 0
-  size: 8000
+  size: 100
 maischberger:
   queries:
     - fields: ["title", "topic"]
@@ -93,7 +45,7 @@ maischberger:
   min_duration: 300
   future: false
   offset: 0
-  size: 8000
+  size: 100
 maybrit_illner:
   queries:
     - fields: ["title", "topic"]
@@ -105,7 +57,7 @@ maybrit_illner:
   min_duration: 300
   future: false
   offset: 0
-  size: 8000
+  size: 100
 markus_lanz:
   queries:
     - fields: ["title", "topic"]
@@ -117,4 +69,16 @@ markus_lanz:
   min_duration: 300
   future: false
   offset: 0
-  size: 8000
+  size: 100
+phoenix_runde:
+  queries:
+    - fields: ["title", "topic"]
+      query: "Phoenix Runde"
+    - fields: ["channel"]
+      query: "phoenix"
+  sortBy: "timestamp"
+  sortOrder: "desc"
+  min_duration: 300
+  future: false
+  offset: 0
+  size: 100
