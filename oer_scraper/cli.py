@@ -1,7 +1,11 @@
+"""Command line interface for the OER scraper."""
+
+# pylint: disable=C0116,R0902,R0913,R0917
+
 import pathlib
 import typing
 from dataclasses import asdict
-from datetime import datetime
+from datetime import datetime, timedelta
 
 import click
 import yaml
@@ -20,12 +24,17 @@ from .scraper import (
 
 @dataclass
 class QuerySpec:
+    """Sepcifies a single query to be made to the API."""
+
     fields: typing.List[str]
     query: str
 
 
 @dataclass
 class ProgramQuery:
+    """Specifies a program to be scraped."""
+
+    # pylint: disable=C0103
     queries: typing.List[QuerySpec]
     sortBy: typing.Literal["timestamp"]
     sortOrder: typing.Literal["desc"]
@@ -37,6 +46,8 @@ class ProgramQuery:
 
 @dataclass
 class Configuration:
+    """Configuration for the scraper."""
+
     subtitles: bool
     parse: bool
     download: bool
@@ -49,13 +60,22 @@ class Configuration:
 
 @click.command()
 @click.option(
-    "--subtitles/--no-subtitles", is_flag=True, help="Include subtitles", default=True
+    "--subtitles/--no-subtitles",
+    is_flag=True,
+    help="Include subtitles. Default: Yes.",
+    default=True,
 )
 @click.option(
-    "--parse/--no-parse", is_flag=True, help="Parse the subtitles", default=True
+    "--parse/--no-parse",
+    is_flag=True,
+    help="Parse the subtitles. Default: Yes.",
+    default=True,
 )
 @click.option(
-    "--download/--no-download", is_flag=True, help="Download the videos", default=False
+    "--download/--no-download",
+    is_flag=True,
+    help="Download the videos. Default: No.",
+    default=False,
 )
 @click.option("--start_time", "-S", type=click.DateTime())
 @click.option("--end_time", "-E", type=click.DateTime())
@@ -80,10 +100,9 @@ def cli(
     subtitles, parse, download, start_time, end_time, interval, config, output_folder
 ):
     # Step 0: setup environment.
-    if end_time < start_time:
+    if end_time < start_time or interval < 0:
         raise ValueError("End time is before start time.")
-    working_dir = output_folder or pathlib.Path.cwd()
-    DATE = datetime.today().date().isoformat()
+    today = datetime.today().date().isoformat()
     configuration = {
         "subtitles": subtitles,
         "parse": parse,
@@ -97,18 +116,19 @@ def cli(
     configuration["programs"] = yaml.safe_load(config)
     # Step 1: validate inputs
     configuration = Configuration(**configuration)
-    main(configuration, working_dir, DATE)
+    main(configuration, today)
 
 
 @logger.catch
-def main(configuration: Configuration, working_dir, DATE):
+def main(configuration: Configuration, today):
     for program, program_query in tqdm(
         configuration.programs.items(), desc="Scraping…"
     ):
         data = get_program(
             program, asdict(program_query)
         )  # Get current listing for the specified program.
-        # Dump this into the SQLite database, deduplicate the data and decide from that whether to download additional data.
+        # Dump this into the SQLite database, deduplicate the data and decide
+        # from that whether to download additional data.
         if data is None or data.empty:
             continue
 
@@ -116,7 +136,7 @@ def main(configuration: Configuration, working_dir, DATE):
 
         if configuration.start_time:
             start_time = configuration.start_time
-            end_time = configuration.end_time or start_time + datetime.timedelta(
+            end_time = configuration.end_time or start_time + timedelta(
                 days=configuration.interval
             )
             data = data.loc[
@@ -128,11 +148,11 @@ def main(configuration: Configuration, working_dir, DATE):
             )
 
         if configuration.subtitles:
-            data = save_subtitles(data, program, DATE, configuration.output_folder)
+            data = save_subtitles(data, program, today, configuration.output_folder)
         if configuration.parse:
-            parse_and_save_xml(program, DATE, configuration.output_folder, data)
+            parse_and_save_xml(program, today, configuration.output_folder, data)
         if configuration.download:
-            download_videos_as_zip(working_dir, start_time, end_time)
-        save_metadata(program, DATE, data, configuration.output_folder)
+            download_videos_as_zip(program, today, data, configuration.output_folder)
+        save_metadata(program, today, data, configuration.output_folder)
 
         return 0

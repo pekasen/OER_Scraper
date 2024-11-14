@@ -1,6 +1,9 @@
+"""Contains functions for scraping metadata"""
+
+# pylint: disable=R1702,W0622
+
 import os
 import pathlib
-import tempfile
 import typing
 import xml.etree.ElementTree as ET
 import zipfile
@@ -15,6 +18,7 @@ API_URL = "https://mediathekviewweb.de/api/query"
 XML_FOLDER = "xml-subtitles/"
 VIDEO_FOLDER = "videos/"
 SUBTITLES_FOLDER = "subtitles/"
+TIMEOUT = 10
 
 
 def _call_mv_api_(api_url: str, query: typing.Dict):
@@ -29,12 +33,12 @@ def _call_mv_api_(api_url: str, query: typing.Dict):
         dict: The JSON response from the API, or None if the call fails.
     """
     headers = {"User-Agent": "ax mvclient 0.1.1", "Content-Type": "text/plain"}
-    response = requests.post(api_url, json=query, headers=headers)
+    response = requests.post(api_url, json=query, headers=headers, timeout=TIMEOUT)
     logger.debug(
         f"API call to {api_url} with query {query} returned status code {response.status_code}"
     )
     if response.status_code != 200:
-        return
+        return None
     # Parse JSON content
     response = response.json()
     logger.debug(f"API call returned {len(response.get("result"))} results")
@@ -60,7 +64,7 @@ def get_program(
     results = _call_mv_api_(API_URL, program_query)
     if not results:
         logger.warning(f"No data return for {program}.")
-        return
+        return None
 
     results = (
         pd.DataFrame(
@@ -104,7 +108,7 @@ def zip_folder(folder_path, zip_path):
         zip_path (str): The path of the resulting ZIP file.
     """
     with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zipf:
-        for root, dirs, files in tqdm(
+        for root, _, files in tqdm(
             os.walk(folder_path), desc="Zip Videos", leave=False
         ):
             for file in files:
@@ -150,7 +154,7 @@ def save_subtitles(df, program, date, output_path):
             id (int): The ID to use for the saved subtitle file.
             path (str): The path to save the subtitle file to.
         """
-        response = requests.get(url)
+        response = requests.get(url, timeout=TIMEOUT)
         if response.status_code == 200:
             xml_data = response.content
             xml_file_path = path / f"{id}.xml"
@@ -183,7 +187,7 @@ def download_video(file_name, url):
     Returns:
         bool: True if the download was successful, False otherwise.
     """
-    response = requests.get(url, stream=True)
+    response = requests.get(url, stream=True, timeout=TIMEOUT)
     if response.status_code == 200:
         with open(file_name, "wb") as f:
             for chunk in tqdm(
@@ -198,11 +202,10 @@ def download_video(file_name, url):
                     f.write(chunk)
                     f.flush()
         return True
-    else:
-        return False
+    return False
 
 
-def download_videos_as_zip(sendung, date, df, path, zip=False):
+def download_videos_as_zip(sendung, date, df, path, zipped=False):
     """
     Downloads videos for the specified TV show, zips them, and removes the original files.
 
@@ -216,11 +219,11 @@ def download_videos_as_zip(sendung, date, df, path, zip=False):
     if not video_path.exists():
         video_path.mkdir(parents=True)
 
-    temp_folder = tempfile.mkdtemp()
+    # temp_folder = tempfile.mkdtemp()
 
     for _, row in tqdm(df.iterrows(), total=len(df), position=1, leave=False):
         download_video(video_path / f'{row["permanent_id"]}.mp4', row["url_video_low"])
-    if zip:
+    if zipped:
         zip_folder(path, path + ".zip")
 
 
@@ -239,7 +242,7 @@ def xml_to_df(xml_path: pathlib.Path) -> pd.DataFrame:
     root = tree.getroot()
     dict_list = []
     for p in root.findall(".//tt:p", ns):
-        xml_id = p.attrib["{http://www.w3.org/XML/1998/namespace}id"]
+        # xml_id = p.attrib["{http://www.w3.org/XML/1998/namespace}id"]
         begin = p.attrib["begin"]
         end = p.attrib["end"]
         text = ""
@@ -275,7 +278,7 @@ def parse_xml_df(xml_df):
     Returns:
         DataFrame: A DataFrame containing the parsed subtitle data.
     """
-    dict_list = list()
+    dict_list = []
     text = ""
     color = ""
     start_time = ""
@@ -289,12 +292,12 @@ def parse_xml_df(xml_df):
         new_end_time = row["end_time"]
         if new_color != color:
             dict_list.append(
-                dict(
-                    text=text.strip(),
-                    color=color,
-                    start_time=start_time,
-                    end_time=end_time,
-                )
+                {
+                    "text": text.strip(),
+                    "color": color,
+                    "start_time": start_time,
+                    "end_time": end_time,
+                }
             )
             text = new_text
             color = new_color
@@ -308,12 +311,12 @@ def parse_xml_df(xml_df):
             text += " " + new_text
             end_time = new_end_time
             dict_list.append(
-                dict(
-                    text=text.strip(),
-                    color=color,
-                    start_time=start_time,
-                    end_time=end_time,
-                )
+                {
+                    "text": text.strip(),
+                    "color": color,
+                    "start_time": start_time,
+                    "end_time": end_time,
+                }
             )
             text = ""
             color = ""
