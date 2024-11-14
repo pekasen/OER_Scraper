@@ -137,7 +137,7 @@ def main(configuration: Configuration, today):
 
         if configuration.start_time:
             start_time = configuration.start_time
-            end_time = configuration.end_time or start_time + timedelta(
+            end_time = configuration.end_time or start_time - timedelta(
                 days=configuration.interval
             )
             data = data.loc[
