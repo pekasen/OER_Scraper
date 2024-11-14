@@ -9,4 +9,4 @@ tagesschau:
   min_duration: 300
   future: false
   offset: 0
-  size: 25
+  size: 8000

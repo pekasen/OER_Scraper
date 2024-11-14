@@ -1,33 +1,21 @@
-import re
 import os
-import shutil
+import pathlib
+import tempfile
 import typing
-import zipfile
-import argparse
-import requests
-import pandas as pd
-from glob import glob
-from tqdm import tqdm
-from datetime import datetime
 import xml.etree.ElementTree as ET
+import zipfile
+from datetime import datetime
+
+import pandas as pd
+import requests
 from loguru import logger
+from tqdm import tqdm
 
-API_URL = 'https://mediathekviewweb.de/api/query'
+API_URL = "https://mediathekviewweb.de/api/query"
+XML_FOLDER = "xml-subtitles/"
+VIDEO_FOLDER = "videos/"
+SUBTITLES_FOLDER = "subtitles/"
 
-def create_base_folder():
-    """
-    Creates a folder named "Broadcast_Subtitles" at the same level as the script if it does not already exist.
-
-    This function determines the directory where the script is located and checks if the folder "Broadcast_Subtitles" exists.
-    If the folder does not exist, it creates the folder at the same level as the script.
-
-    Returns:
-        None
-    """
-    script_dir = os.path.dirname(os.path.abspath(__file__))
-    base_folder_path = os.path.join(script_dir, "Broadcast_Subtitles")
-    if not os.path.exists(base_folder_path):
-        os.makedirs(base_folder_path)
 
 def _call_mv_api_(api_url: str, query: typing.Dict):
     """
@@ -40,21 +28,22 @@ def _call_mv_api_(api_url: str, query: typing.Dict):
     Returns:
         dict: The JSON response from the API, or None if the call fails.
     """
-    headers = {
-        'User-Agent': 'ax mvclient 0.1.1',
-        'Content-Type': 'text/plain'
-    }
+    headers = {"User-Agent": "ax mvclient 0.1.1", "Content-Type": "text/plain"}
     response = requests.post(api_url, json=query, headers=headers)
-    logger.debug(f"API call to {api_url} with query {query} returned status code {response.status_code}")
+    logger.debug(
+        f"API call to {api_url} with query {query} returned status code {response.status_code}"
+    )
     if response.status_code != 200:
         return
     # Parse JSON content
     response = response.json()
-    logger.debug(f"API call returned {len(response)} results")
+    logger.debug(f"API call returned {len(response.get("result"))} results")
     return response
 
 
-def get_program(program: str, program_query: typing.Dict) -> typing.Optional[pd.DataFrame]:
+def get_program(
+    program: str, program_query: typing.Dict
+) -> typing.Optional[pd.DataFrame]:
     """
     Fetches metadata for a specified TV show from the MediathekView API.
 
@@ -64,15 +53,15 @@ def get_program(program: str, program_query: typing.Dict) -> typing.Optional[pd.
 
     Returns:
         DataFrame: A DataFrame containing metadata about the TV show's episodes.
-    """    
+    """
 
-    logger.debug(f"Fetching data for {program} with query: {program_query}")    
+    logger.debug(f"Fetching data for {program} with query: {program_query}")
 
     results = _call_mv_api_(API_URL, program_query)
     if not results:
         logger.warning(f"No data return for {program}.")
         return
-    
+
     results = (
         pd.DataFrame(
             (
@@ -80,20 +69,15 @@ def get_program(program: str, program_query: typing.Dict) -> typing.Optional[pd.
                 for res_obj in results.get("result", {"results": []}).get("results", [])
             )
         )
-        .drop_duplicates("url_subtitle").reset_index(drop=True)
-        .assign(permanent_id=lambda x: x.timestamp.map(lambda y: f"{program}_{y}"))
-        .query("url_subtitle.notna()")
+        .drop_duplicates("url_subtitle")
+        .reset_index(drop=True)
+        .assign(
+            permanent_id=lambda x: x.timestamp.map(lambda y: f"{program}_{y}"),
+            timestamp=lambda x: pd.to_datetime(x.timestamp, unit="s"),
+        )
+        .query("url_subtitle.str.startswith('https')")
     )
 
-    # results["PERMANENT_ID"] = df.index
-    # if sendung == "zdf_heute":
-    #     return df.iloc[:366,:]
-    # elif sendung in ["anne_will", "caren_miosga"]:
-    #     df.dropna(subset="url_subtitle", inplace=True)
-    #     df = df[df["url_subtitle"] != ""].reset_index(drop=True)
-    #     df["PERMANENT_ID"] = df.index
-    #     return df
-    # else:
     return results
 
 
@@ -107,9 +91,10 @@ def save_metadata(program, date, data, path):
         df (DataFrame): The DataFrame containing metadata to save.
         path (Path): The path to save the metadata file to.
     """
+    path = get_path(program, date, path)
     data.to_csv(path / f"{program}_{date}.csv", index=False)
 
-    
+
 def zip_folder(folder_path, zip_path):
     """
     Zips the contents of a folder into a ZIP file.
@@ -118,12 +103,35 @@ def zip_folder(folder_path, zip_path):
         folder_path (str): The path of the folder to zip.
         zip_path (str): The path of the resulting ZIP file.
     """
-    with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
-        for root, dirs, files in tqdm(os.walk(folder_path), desc="Zip Videos", leave=False):
+    with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zipf:
+        for root, dirs, files in tqdm(
+            os.walk(folder_path), desc="Zip Videos", leave=False
+        ):
             for file in files:
-                zipf.write(os.path.join(root, file), os.path.relpath(os.path.join(root, file), folder_path))
-    
-def save_subtitles(df, program, date):
+                zipf.write(
+                    os.path.join(root, file),
+                    os.path.relpath(os.path.join(root, file), folder_path),
+                )
+
+
+def get_path(program: str, date: datetime, path: pathlib.Path) -> pathlib.Path:
+    """
+    Creates a path for the specified TV show and date.
+
+    Args:
+        program (str): The name of the TV show.
+        date (str): The date string to include in the file path.
+
+    Returns:
+        Path: The path to save the TV show data to.
+    """
+    out_path = path / f"{program}/{date}/"
+    if not out_path.exists():
+        out_path.mkdir(parents=True)
+    return out_path
+
+
+def save_subtitles(df, program, date, output_path):
     """
     Saves subtitles for each episode of the specified TV show.
 
@@ -132,6 +140,7 @@ def save_subtitles(df, program, date):
         sendung (str): The name of the TV show.
         date (str): The date string to include in the file path.
     """
+
     def get_subtitles(url, id, path):
         """
         Fetches and saves subtitles from a URL.
@@ -144,17 +153,25 @@ def save_subtitles(df, program, date):
         response = requests.get(url)
         if response.status_code == 200:
             xml_data = response.content
-            with open(f"{path}{id}.xml", "wb") as f:
+            xml_file_path = path / f"{id}.xml"
+            with xml_file_path.open("wb") as f:
                 f.write(xml_data)
-        path = get_path(program, date, path)
-        path += "XML_Subtitles/"
-        if not os.path.exists(path):
-            os.makedirs(path)
-        for idx, row in tqdm(df.iterrows(), total = len(df), leave = False):
-            if isinstance(row["url_subtitle"], str):
-                if row["url_subtitle"].startswith("https://"):
-                    get_subtitles(row["url_subtitle"], row["PERMANENT_ID"], path)
-                
+        return xml_file_path
+
+    output_path = get_path(program, date, output_path)
+    xml_path = output_path / XML_FOLDER
+    xml_paths = []
+    if not xml_path.exists():
+        xml_path.mkdir(parents=True)
+    for _, row in tqdm(df.iterrows(), total=len(df), leave=False):
+        # if isinstance(row["url_subtitle"], str) and  row["url_subtitle"].startswith("https://"):
+        xml_paths.append(
+            get_subtitles(row["url_subtitle"], row["permanent_id"], xml_path)
+        )
+    df["xml_path"] = xml_paths
+    return df
+
+
 def download_video(file_name, url):
     """
     Downloads a video from a URL and saves it to a file.
@@ -169,15 +186,23 @@ def download_video(file_name, url):
     response = requests.get(url, stream=True)
     if response.status_code == 200:
         with open(file_name, "wb") as f:
-            for chunk in tqdm(response.iter_content(chunk_size=1024), desc="Downloading", unit="KB", unit_scale=True, leave=False, position = 2):
-                if chunk:  
+            for chunk in tqdm(
+                response.iter_content(chunk_size=1024),
+                desc="Downloading",
+                unit="KB",
+                unit_scale=True,
+                leave=False,
+                position=2,
+            ):
+                if chunk:
                     f.write(chunk)
-                    f.flush() 
+                    f.flush()
         return True
     else:
         return False
-    
-def download_videos_as_zip(sendung, date, df, path):
+
+
+def download_videos_as_zip(sendung, date, df, path, zip=False):
     """
     Downloads videos for the specified TV show, zips them, and removes the original files.
 
@@ -187,15 +212,19 @@ def download_videos_as_zip(sendung, date, df, path):
         df (DataFrame): The DataFrame containing video URLs to download.
     """
     base_path = get_path(sendung, date, path)
-    path = base_path + "Videos"
-    if not os.path.exists(path):
-        os.makedirs(path)
-    for idx, row in tqdm(df.iterrows(), total = len(df), position = 1, leave = False):
-        download_video(f'{path}/{row["PERMANENT_ID"]}.mp4', row["url_video_low"])
-    zip_folder(path, path+".zip")
-    shutil.rmtree(path)
-    
-def xml_to_df(xml_path:str):
+    video_path = base_path / VIDEO_FOLDER
+    if not video_path.exists():
+        video_path.mkdir(parents=True)
+
+    temp_folder = tempfile.mkdtemp()
+
+    for _, row in tqdm(df.iterrows(), total=len(df), position=1, leave=False):
+        download_video(video_path / f'{row["permanent_id"]}.mp4', row["url_video_low"])
+    if zip:
+        zip_folder(path, path + ".zip")
+
+
+def xml_to_df(xml_path: pathlib.Path) -> pd.DataFrame:
     """
     Parses an XML file containing subtitles into a DataFrame.
 
@@ -205,27 +234,36 @@ def xml_to_df(xml_path:str):
     Returns:
         DataFrame: A DataFrame containing the parsed subtitle data.
     """
-    ns = {'tt': 'http://www.w3.org/ns/ttml'}
+    ns = {"tt": "http://www.w3.org/ns/ttml"}
     tree = ET.parse(xml_path)
     root = tree.getroot()
     dict_list = []
-    for p in root.findall('.//tt:p', ns):
-        xml_id = p.attrib['{http://www.w3.org/XML/1998/namespace}id']
-        begin = p.attrib['begin']
-        end = p.attrib['end']
-        text = ''
-        color = ''
-        for span in p.findall('.//tt:span', ns):
+    for p in root.findall(".//tt:p", ns):
+        xml_id = p.attrib["{http://www.w3.org/XML/1998/namespace}id"]
+        begin = p.attrib["begin"]
+        end = p.attrib["end"]
+        text = ""
+        color = ""
+        for span in p.findall(".//tt:span", ns):
             if isinstance(span.text, str):
                 text += " " + span.text
-                if 'style' in span.attrib:
-                    style_id = span.attrib['style']
-                    for style in root.findall('.//tt:style', ns):
-                        if style.attrib['{http://www.w3.org/XML/1998/namespace}id'] == style_id:
-                            color = style.attrib.get('{http://www.w3.org/XML/1998/namespace}id', '')
+                if "style" in span.attrib:
+                    style_id = span.attrib["style"]
+                    for style in root.findall(".//tt:style", ns):
+                        if (
+                            style.attrib["{http://www.w3.org/XML/1998/namespace}id"]
+                            == style_id
+                        ):
+                            color = style.attrib.get(
+                                "{http://www.w3.org/XML/1998/namespace}id", ""
+                            )
                             break
-        dict_list.append({'text': text, 'color': color, 'start_time': begin, 'end_time': end})
+        dict_list.append(
+            {"text": text, "color": color, "start_time": begin, "end_time": end}
+        )
+
     return pd.DataFrame(dict_list)
+
 
 def parse_xml_df(xml_df):
     """
@@ -242,7 +280,7 @@ def parse_xml_df(xml_df):
     color = ""
     start_time = ""
     end_time = ""
-    for idx, row in xml_df.iterrows():
+    for _, row in xml_df.iterrows():
         if "* Gong *" in row["text"]:
             continue
         new_text = row["text"]
@@ -250,25 +288,33 @@ def parse_xml_df(xml_df):
         new_start_time = row["start_time"]
         new_end_time = row["end_time"]
         if new_color != color:
-            dict_list.append(dict(
-                text = text.strip(),
-                color = color,
-                start_time = start_time,
-                end_time = end_time
-                ))
+            dict_list.append(
+                dict(
+                    text=text.strip(),
+                    color=color,
+                    start_time=start_time,
+                    end_time=end_time,
+                )
+            )
             text = new_text
             color = new_color
             start_time = new_start_time
             end_time = new_end_time
-        elif new_text.strip().endswith(".") or new_text.strip().endswith("?") or new_text.strip().endswith("!"):
+        elif (
+            new_text.strip().endswith(".")
+            or new_text.strip().endswith("?")
+            or new_text.strip().endswith("!")
+        ):
             text += " " + new_text
             end_time = new_end_time
-            dict_list.append(dict(
-                text = text.strip(),
-                color = color,
-                start_time = start_time,
-                end_time = end_time
-                ))
+            dict_list.append(
+                dict(
+                    text=text.strip(),
+                    color=color,
+                    start_time=start_time,
+                    end_time=end_time,
+                )
+            )
             text = ""
             color = ""
             start_time = ""
@@ -282,7 +328,8 @@ def parse_xml_df(xml_df):
     parsed_df["text"] = parsed_df["text"].apply(lambda x: x.replace("  ", " "))
     return parsed_df
 
-def parse_and_save_xml(sendung, date, path):
+
+def parse_and_save_xml(program, date, path, data):
     """
     Parses XML subtitle files and saves them as CSV files.
 
@@ -291,43 +338,25 @@ def parse_and_save_xml(sendung, date, path):
         date (str): The date string to include in the file path.
 
     """
-    path = get_path(sendung, date,  path)
-    xml_folder = path + "XML_Subtitles/"
-    parsed_xml_folder = path + "Subtitles/"
-    if not os.path.exists(parsed_xml_folder):
-        os.makedirs(parsed_xml_folder)
-    path_list = glob(os.path.join(xml_folder, "*.xml"))
-    for xml_path in tqdm(path_list, total=len(path_list), desc="Parse XML", leave=False):
+    program_path = get_path(program, date, path)
+    xml_folder = program_path / XML_FOLDER
+    parsed_xml_folder = program_path / SUBTITLES_FOLDER
+    if not parsed_xml_folder.exists():
+        parsed_xml_folder.mkdir(parents=True)
+
+    input_path_list = data.xml_path.map(lambda x: xml_folder / x).tolist()
+    output_path_list = data.permanent_id.map(
+        lambda x: parsed_xml_folder / f"{x}.csv"
+    ).tolist()
+
+    logger.info(f"Parsing {len(input_path_list)} XML files for {program} on {date}")
+
+    for xml_path, csv_path in tqdm(
+        zip(input_path_list, output_path_list), desc="Parse XML", leave=False
+    ):
         df = xml_to_df(xml_path)
         df = parse_xml_df(df)
-        df.to_csv(xml_path.replace("XML_Subtitles", "Subtitles").replace("xml", "csv"), index=False)
-    
-    
-def main(subtitles:bool=True, parsed:bool=True, videos:bool=True):
-    """
-    Main function to download and process TV show data including metadata, subtitles, and videos.
-
-    Args:
-        subtitles (bool): If True, download subtitles.
-        parsed (bool): If True, parse subtitles.
-        videos (bool): If True, download videos.
-    """
-    create_base_folder()
-    for sendung in tqdm(nachrichtensendungen, desc="Scrape News", total = len(nachrichtensendungen)):
-        df = get_program(sendung)
-        save_metadata(sendung, DATE, df)
-        if subtitles:
-            save_subtitles(df, sendung, DATE)
-        if parsed:
-            parse_and_save_xml(sendung, DATE)
-        if videos:
-            download_videos_as_zip(sendung, DATE, df)
-
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Download and process TV show data.")
-    parser.add_argument('--subtitles', type=int, default=1, help='Download subtitles (1 for True, 0 for False)')
-    parser.add_argument('--parsed', type=int, default=1, help='Parse subtitles (1 for True, 0 for False)')
-    parser.add_argument('--videos', type=int, default=0, help='Download videos (1 for True, 0 for False)')
-    args = parser.parse_args()
-
-    main(subtitles=bool(args.subtitles), parsed=bool(args.parsed), videos=bool(args.videos))
+        df.to_csv(
+            csv_path,
+            index=False,
+        )
