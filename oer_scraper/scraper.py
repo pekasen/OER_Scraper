@@ -79,7 +79,6 @@ def get_program(
             permanent_id=lambda x: x.timestamp.map(lambda y: f"{program}_{y}"),
             timestamp=lambda x: pd.to_datetime(x.timestamp, unit="s"),
         )
-        .query("url_subtitle.str.startswith('https')")
     )
 
     return results
@@ -168,10 +167,13 @@ def save_subtitles(df, program, date, output_path):
     if not xml_path.exists():
         xml_path.mkdir(parents=True)
     for _, row in tqdm(df.iterrows(), total=len(df), leave=False):
-        # if isinstance(row["url_subtitle"], str) and  row["url_subtitle"].startswith("https://"):
-        xml_paths.append(
-            get_subtitles(row["url_subtitle"], row["permanent_id"], xml_path)
-        )
+        url_subtitle = row["url_subtitle"]
+        if isinstance(url_subtitle, str) and  url_subtitle.startswith("https://"):
+            xml_paths.append(
+                get_subtitles(url_subtitle, row["permanent_id"], xml_path)
+            )
+        else:
+            xml_paths.append(None)
     df["xml_path"] = xml_paths
     return df
 
