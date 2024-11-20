@@ -24,7 +24,7 @@ loguru = "*"
 black = "*"
 isort = "*"
 pylint = "*"
-pytest = "^8.3.3"
+pytest = "*"
 
 [build-system]
 requires = ["poetry-core"]
